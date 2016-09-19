@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Addon Author="Veex" APIVersion="13" Name="ForgeUI_ActionSets" Description="">
+    <Script Name="ForgeUI_ActionSets.lua"/>
+    <Form Name="ForgeUI_ActionSets.xml"/>
+</Addon>
