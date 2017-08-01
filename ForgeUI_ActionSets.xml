@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
 <Forms>
-    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="50" BAnchorPoint="0" BAnchorOffset="20" RelativeToClient="0" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_MenuButton" Border="0" Picture="1" SwallowMouseClicks="1" TooltipColor="">
+    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="50" BAnchorPoint="0" BAnchorOffset="20" RelativeToClient="0" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_MenuButton" Border="0" Picture="1" SwallowMouseClicks="1" TooltipColor="" Tooltip="">
         <Event Name="MouseEnter" Function="OnMenuButtonEnter"/>
         <Event Name="MouseExit" Function="OnMenuButtonExit"/>
     </Form>
@@ -11,7 +11,11 @@
         <Control Class="Window" LAnchorPoint="0" LAnchorOffset="1" TAnchorPoint="0" TAnchorOffset="1" RAnchorPoint="1" RAnchorOffset="-1" BAnchorPoint="1" BAnchorOffset="-1" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="Icon" TooltipColor="" Picture="1" IgnoreMouse="1" NewWindowDepth="1"/>
         <Event Name="GenerateTooltip" Function="OnAbilityButtonTooltip"/>
     </Form>
-    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="50" BAnchorPoint="0" BAnchorOffset="600" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_MenuOverlay" Border="0" Picture="1" SwallowMouseClicks="1" IgnoreMouse="1"/>
-    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="600" BAnchorPoint="0" BAnchorOffset="50" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_AbilityMenuOverlay" Border="0" Picture="1" SwallowMouseClicks="1" IgnoreMouse="1"/>
+    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="50" BAnchorPoint="0" BAnchorOffset="600" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_MenuOverlay" Border="0" Picture="1" SwallowMouseClicks="1" IgnoreMouse="1" TooltipColor=""/>
+    <Form Class="Window" LAnchorPoint="0" LAnchorOffset="0" TAnchorPoint="0" TAnchorOffset="0" RAnchorPoint="0" RAnchorOffset="600" BAnchorPoint="0" BAnchorOffset="50" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_AbilityMenuOverlay" Border="0" Picture="1" SwallowMouseClicks="1" IgnoreMouse="1" TooltipColor=""/>
     <SpriteFile Name="..\ForgeUI\media\textures\ForgeUI_Textures.xml"/>
+    <Form Class="Window" LAnchorPoint="0.6" LAnchorOffset="0" TAnchorPoint="0.6" TAnchorOffset="0" RAnchorPoint="1" RAnchorOffset="0" BAnchorPoint="1" BAnchorOffset="0" RelativeToClient="1" Font="Default" Text="" BGColor="black" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="ForgeUI_AbilityOverlayQueue" Border="0" Picture="1" SwallowMouseClicks="1" Moveable="0" Escapable="0" Overlapped="1" TooltipColor="" Sprite="WhiteFill" IgnoreMouse="0" NoClip="0" NewWindowDepth="1" Visible="0">
+        <Event Name="MouseButtonDown" Function="OnQueueOverlayClick"/>
+        <Control Class="Window" LAnchorPoint="0" LAnchorOffset="1" TAnchorPoint="0" TAnchorOffset="1" RAnchorPoint="1" RAnchorOffset="-1" BAnchorPoint="1" BAnchorOffset="-1" RelativeToClient="1" Font="Default" Text="" BGColor="UI_WindowBGDefault" TextColor="UI_WindowTextDefault" Template="Default" TooltipType="OnCursor" Name="Icon" TooltipColor="" Picture="1" IgnoreMouse="1" NewWindowDepth="0" Sprite="IconSprites:Icon_SkillSpellslinger_distortion"/>
+    </Form>
 </Forms>
