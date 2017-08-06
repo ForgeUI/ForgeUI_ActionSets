@@ -21,7 +21,7 @@ local G = _G["ForgeLibs"]["ForgeGUI"] -- ForgeGUI
 local ForgeUI_ActionSets = {
 	_NAME = "ForgeUI_ActionSets",
 	_API_VERSION = 3,
-	_VERSION = "1.0",
+	_VERSION = "1.1",
 	DISPLAY_NAME = "Action sets",
 
 	tQueuedAbilities = {},
