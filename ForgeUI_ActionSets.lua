@@ -24,6 +24,8 @@ local ForgeUI_ActionSets = {
 	_VERSION = "1.0",
 	DISPLAY_NAME = "Action sets",
 
+	tQueuedAbilities = {},
+
 	tSettings = {
 		profile = {
 			strMenuSprite = "Lights",
@@ -35,6 +37,7 @@ local ForgeUI_ActionSets = {
 			bLockAbilityHistory = false,
 			bShowTooltips = true,
 			bPlaySound = false,
+			bCombatMenu = true,
 			nMenuButtonWidth = 50,
 			nMenuButtonHeight = 20,
 			nMenuButtonOffsetY = 20,
@@ -77,6 +80,7 @@ function ForgeUI_ActionSets:ForgeAPI_Init()
 	self.xmlDoc:RegisterCallback("OnDocLoaded", self)
 
 	Apollo.RegisterEventHandler("UnitEnteredCombat",	"OnEnteredCombat", self)
+	Apollo.RegisterEventHandler("CombatLogResurrect", "OnResurrected", self)
 	Apollo.RegisterEventHandler("PlayerLevelChange",	"InitAddon", self)
 	Apollo.RegisterEventHandler("PlayerEnteredWorld",	"OnEnterWorld", self)
 
@@ -102,7 +106,14 @@ function ForgeUI_ActionSets:OnEnteredCombat(unit, bInCombat)
 
 	if unitPlayer and unitPlayer:IsValid() then
 		if unit == unitPlayer and self.tMenuButtons then
-			self:MenuButtonsShow(not bInCombat)
+			local bDead = unitPlayer:IsDead()
+			if not self._DB.profile.bCombatMenu and bInCombat then
+				self:MenuButtonsShow(false)
+			else
+				self:MenuButtonsShow(true)
+			end
+			self.bInCombat = bInCombat
+			if not bInCombat and not bDead then self:ApplyQueue() end
 		end
 	end
 end
@@ -111,7 +122,25 @@ function ForgeUI_ActionSets:OnEnterWorld()
 	local unitPlayer = GameLib.GetPlayerUnit()
 
 	if unitPlayer and unitPlayer:IsValid() then
-		self:MenuButtonsShow(not unitPlayer:IsInCombat())
+		local bInCombat = unitPlayer:IsInCombat()
+		local bDead = unitPlayer:IsDead()
+
+		if not self._DB.profile.bCombatMenu and bInCombat then
+			self:MenuButtonsShow(false)
+		else
+			self:MenuButtonsShow(true)
+		end
+		self.bInCombat = bInCombat
+		if not bInCombat and not bDead then self:ApplyQueue() end
+	end
+end
+
+function ForgeUI_ActionSets:OnResurrected(param)
+	local unitPlayer = GameLib.GetPlayerUnit()
+	if unitPlayer and unitPlayer:IsValid() then
+		if param.unitCaster == unitPlayer and self.tMenuButtons then
+			self:ApplyQueue()
+		end
 	end
 end
 
@@ -182,6 +211,7 @@ function ForgeUI_ActionSets:BuildMenuButtons()
 		if ActionSetLib.IsSlotUnlocked(nLasIndex - 1) == ActionSetLib.CodeEnumLimitedActionSetResult.Ok then
 			debug("LAS slot unlocked at index "..nLasIndex..", building...", true)
 			local wndMenuButton = Apollo.LoadForm(self.xmlDoc, "ForgeUI_MenuButton", nil, self)
+			local wndQueueButton = Apollo.LoadForm(self.xmlDoc, "ForgeUI_AbilityOverlayQueue", tActionButton, self)
 
 			if not self._DB.profile.bInvisibleMenuButtons then
 				wndMenuButton:SetSprite(tMenuSprites[self._DB.profile.strMenuSprite])
@@ -191,9 +221,11 @@ function ForgeUI_ActionSets:BuildMenuButtons()
 				strType = "MenuButton",
 				nLasIndex = nLasIndex,
 				tActionButton = tActionButton,
+				wndQueueButton = wndQueueButton,
 			}
 
 			wndMenuButton:SetData(tMenuButtonData)
+			wndQueueButton:SetData(tMenuButtonData)
 
 			self.tMenuButtons[#self.tMenuButtons + 1] = wndMenuButton
 			self:PositionMenuButton(tActionButton, wndMenuButton)
@@ -389,7 +421,7 @@ end
 
 function ForgeUI_ActionSets:CreateHistoryButton(tAbility, nLasIndex, nPriority, nTargetTier)
 	local bIsValid = true
-	for _, nId in pairs(ActionSetLib.GetCurrentActionSet()) do
+	for _, nId in pairs(self:GetActionSetAfterQueue()) do
 		if nId == tAbility.nId then
 			debug("History ability "..tAbility.nId.." already in LAS. Disabling...")
 			bIsValid = false
@@ -509,9 +541,9 @@ function ForgeUI_ActionSets:PopulateAndOpenAbilityMenu(wndAbilityMenuButton)
 end
 
 function ForgeUI_ActionSets:GetAbilityMenuSkills(nLasIndex, strAbilityCategory)
-	local tActionSet = ActionSetLib.GetCurrentActionSet()
+	local tActionSet = self:GetActionSetAfterQueue()
 	local tExcludeId = {}
-	for _, nId in pairs(tActionSet) do
+	for nLasIndex, nId in pairs(tActionSet) do
 		tExcludeId[nId] = true
 	end
 
@@ -570,9 +602,15 @@ function ForgeUI_ActionSets:OnAbilityButtonClick(wndHandler, wndControl, eMouseB
 		if eMouseButton == GameLib.CodeEnumInputMouse.Left then
 			if tButtonData.bDisabled then return end
 
-			self:Ability_RequestChange(tButtonData.nLasIndex, tButtonData.nAbilityId)
-			self:OnCloseAbilityMenu()
-			self:OnCloseMenu()
+			if self:IsInCombat() or self:IsDead() then
+				self:QueueForChange(tButtonData.nLasIndex, tButtonData.nAbilityId)
+				self:OnCloseAbilityMenu()
+				self:OnCloseMenu()
+			else
+				self:Ability_RequestChange(tButtonData.nLasIndex, tButtonData.nAbilityId)
+				self:OnCloseAbilityMenu()
+				self:OnCloseMenu()
+			end
 		elseif eMouseButton == GameLib.CodeEnumInputMouse.Right then
 			if not self._DB.profile.bLockAbilityHistory then
 				if tButtonData.strType == "AbilityButton_History" then
@@ -593,6 +631,79 @@ function ForgeUI_ActionSets:OnAbilityButtonTooltip(wndHandler, wndControl, eTool
 	end
 end
 
+------------------------------------------------------------------------------------------------------------------------
+-- Queue functions
+------------------------------------------------------------------------------------------------------------------------
+function ForgeUI_ActionSets:QueueForChange(nLasIndex, nAbilityNewId)
+	debug("Adding to Queue: Swap ability at index " .. nLasIndex .. " to ability " .. nAbilityNewId)
+	self.tQueuedAbilities[nLasIndex] = nAbilityNewId
+
+	--[[add to history]]
+	local tActionSet = ActionSetLib.GetCurrentActionSet()
+	local nAbilityCurrentId = tActionSet[nLasIndex]
+	if nAbilityCurrentId ~= 0 then
+		self:AddHistory(nLasIndex, nAbilityCurrentId, nAbilityNewId)
+	end
+
+	--[[apply icon]]
+	local tButtonData;
+	for _, wndButton in ipairs(self.tMenuButtons) do
+		local data = wndButton:GetData()
+		if data and data.nLasIndex == nLasIndex then
+			tButtonData = data
+			break;
+		end
+	end
+
+	if not tButtonData or not tButtonData.wndQueueButton then return debug("Failed to find Button for index "..nLasIndex) end
+
+	tButtonData.wndQueueButton:Show(true, true)
+	tButtonData.wndQueueButton:FindChild("Icon"):SetSprite(self:GetIconForAbilityId(nAbilityNewId))
+end
+
+function ForgeUI_ActionSets:RemoveQueuedAbility(nLasIndex)
+	local nOldAbilityId = self.tQueuedAbilities[nLasIndex]
+	debug("Removing from Queue: Swap ability at index " .. nLasIndex .. " to ability " .. nOldAbilityId)
+	self.tQueuedAbilities[nLasIndex] = nil
+
+	--[[remove icon]]
+	local tButtonData;
+	for _, wndButton in ipairs(self.tMenuButtons) do
+		local data = wndButton:GetData()
+		if data and data.nLasIndex == nLasIndex then
+			tButtonData = data
+			break;
+		end
+	end
+
+	if not tButtonData or not tButtonData.wndQueueButton then return debug("Failed to find Button for index "..nLasIndex) end
+
+	tButtonData.wndQueueButton:Show(false, true)
+end
+
+function ForgeUI_ActionSets:ApplyQueue()
+	if not self:IsInCombat() and not self:IsDead() and next(self.tQueuedAbilities) then --is not empty
+		self:Ability_RequestMultiChange(self.tQueuedAbilities)
+		self.tQueuedAbilities = {}
+
+		--remove icons
+		for _, wndButton in ipairs(self.tMenuButtons) do
+			local tData = wndButton:GetData()
+			if tData and tData.wndQueueButton then
+				tData.wndQueueButton:Show(false, true)
+			end
+		end
+	end
+end
+
+function ForgeUI_ActionSets:OnQueueOverlayClick(wndHandler, wndControl, eMouseButton, ...)
+	if wndHandler ~= wndControl then return end
+	if eMouseButton == GameLib.CodeEnumInputMouse.Right then
+		local tData = wndHandler:GetData()
+		if not tData or not tData.nLasIndex then return end
+		self:RemoveQueuedAbility(tData.nLasIndex)
+	end
+end
 ------------------------------------------------------------------------------------------------------------------------
 -- LAS functions
 ------------------------------------------------------------------------------------------------------------------------
@@ -632,6 +743,49 @@ function ForgeUI_ActionSets:Ability_RequestChange(nLasIndex, nAbilityNewId)
 		end
 	else
 		debug("The ability " .. nAbilityCurrentId .. " is not on the las")
+	end
+end
+
+function ForgeUI_ActionSets:Ability_RequestMultiChange(tChanges) --[nLasIndex, nAbilityNewId]
+	debug("Attempting a bulk switch", tChanges)
+	local tActionSet = ActionSetLib.GetCurrentActionSet()
+
+	--split these, because we need to do downgrades first (all of them)
+	local tAbilityDowngrade = {} --[nAbilityId] = nTier
+	local tAbilityUpgrade = {} --[nAbilityId] = nTier
+
+	for nLasIndex, nAbilityNewId in pairs(tChanges) do --fill up/down-grades and apply changes to tActionSet
+		local nAbilityCurrentId = tActionSet[nLasIndex]
+		if nAbilityCurrentId then
+			tActionSet[nLasIndex] = nAbilityNewId
+			if nAbilityCurrentId ~= 0 then
+				local nCurrentTier = self:Ability_GetTier(nAbilityCurrentId)
+				tAbilityDowngrade[nAbilityCurrentId] = 1
+				tAbilityUpgrade[nAbilityNewId] = nCurrentTier
+			end
+		end
+	end
+
+	--apply downgrades
+	debug("Bulk Downgrading:", tAbilityDowngrade)
+	for nAbilityId, nTier in pairs(tAbilityDowngrade) do
+		self:Ability_SetTier(nAbilityId, nTier)
+	end
+
+	--apply upgrades
+	debug("Bulk Upgrading:", tAbilityUpgrade)
+	for nAbilityId, nTier in pairs(tAbilityUpgrade) do
+		self:Ability_SetTier(nAbilityId, nTier)
+	end
+
+	--switching skills
+	local tResult = ActionSetLib.RequestActionSetChanges(tActionSet)
+	if tResult.eResult ~= ActionSetLib.CodeEnumLimitedActionSetResult.Ok then
+		debug("Failed to save new las, result:", tResult.eResult)
+	else
+		if self._DB.profile.bPlaySound then
+			Sound.Play(186)
+		end
 	end
 end
 
@@ -726,6 +880,33 @@ end
 ------------------------------------------------------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------------------------------------------------------
+function ForgeUI_ActionSets:IsInCombat()
+	local player = GameLib.GetPlayerUnit()
+	return player and player:IsValid() and player:IsInCombat() or self.bInCombat or false
+end
+
+function ForgeUI_ActionSets:IsDead()
+	local player = GameLib.GetPlayerUnit()
+	return player and player:IsValid() and player:IsDead() or false --assume not dead, if not existing.
+end
+
+function ForgeUI_ActionSets:GetIconForAbilityId(nAbilityId)
+	for _, tAbility in ipairs(AbilityBook.GetAbilitiesList()) do
+		if tAbility.nId == nAbilityId then
+			local _, tTier = next(tAbility.tTiers)
+			return tTier and tTier.splObject:GetIcon() or nil
+		end
+	end
+end
+
+function ForgeUI_ActionSets:GetActionSetAfterQueue()
+	local tActionSet = ActionSetLib.GetCurrentActionSet()
+	for nLasIndex, nId in pairs(self.tQueuedAbilities) do
+		tActionSet[nLasIndex] = nId
+	end
+	return tActionSet
+end
+
 function ForgeUI_ActionSets:TableInsertEx(tHistory, nAbilityNewId, nHistoryMax)
 	debug("-> TableInsertEx newId = ".. nAbilityNewId .. " max = " .. nHistoryMax)
 	tHistory = tHistory or {}
@@ -781,25 +962,26 @@ function ForgeUI_ActionSets:ForgeAPI_PopulateOptions()
 
 	G:API_AddCheckBox(self, wndGeneral, "Enable menu buttons", self._DB.profile, "bEnableMenuButtons", { tMove = {0, 0}, fnCallback = self.BuildMenuButtons })
 	G:API_AddCheckBox(self, wndGeneral, "Invisible menu buttons", self._DB.profile, "bInvisibleMenuButtons", { tMove = {0, 30}, fnCallback = self.BuildMenuButtons })
-	G:API_AddCheckBox(self, wndGeneral, "Show tooltips", self._DB.profile, "bShowTooltips", { tMove = {0, 60} })
-	G:API_AddCheckBox(self, wndGeneral, "Play sound", self._DB.profile, "bPlaySound", { tMove = {0, 90} })
+	G:API_AddCheckBox(self, wndGeneral, "Enable in-combat menu", self._DB.profile, "bCombatMenu", { tMove = {0, 60}})
+	G:API_AddCheckBox(self, wndGeneral, "Show tooltips", self._DB.profile, "bShowTooltips", { tMove = {0, 90} })
+	G:API_AddCheckBox(self, wndGeneral, "Play sound", self._DB.profile, "bPlaySound", { tMove = {0, 120} })
 	G:API_AddNumberBox(self, wndGeneral, "Menu button width", self._DB.profile, "nMenuButtonWidth", { tMove = {300, 0}, fnCallback = self.RepositionMenuButtons })
 	G:API_AddNumberBox(self, wndGeneral, "Menu button height", self._DB.profile, "nMenuButtonHeight", { tMove = {300, 30}, fnCallback = self.RepositionMenuButtons })
 	G:API_AddNumberBox(self, wndGeneral, "Menu button vertical offset", self._DB.profile, "nMenuButtonOffsetY", { tOffsets = { 305, 65, 600, 90 }, fnCallback = self.RepositionMenuButtons })
 
-	G:API_AddCheckBox(self, wndGeneral, "Show ability menu buttons", self._DB.profile, "bEnableAbilityMenuButtons", { tMove = {0, 120} })
-	G:API_AddNumberBox(self, wndGeneral, "Ability buttons size", self._DB.profile, "nAbilityButtonSize", { tMove = {300, 120}, fnCallback = self.RepositionMenuButtons })
+	G:API_AddCheckBox(self, wndGeneral, "Show ability menu buttons", self._DB.profile, "bEnableAbilityMenuButtons", { tMove = {0, 150} })
+	G:API_AddNumberBox(self, wndGeneral, "Ability buttons size", self._DB.profile, "nAbilityButtonSize", { tMove = {300, 150}, fnCallback = self.RepositionMenuButtons })
 
-	G:API_AddCheckBox(self, wndGeneral, "Show ability history", self._DB.profile, "bEnableAbilityHistory", { tMove = {0, 180} })
-	G:API_AddNumberBox(self, wndGeneral, "Number of shortcuts per ability", self._DB.profile, "nHistoryMax", { tOffsets = { 305, 185, 600, 210 } })
-	G:API_AddCheckBox(self, wndGeneral, "Lock ability history", self._DB.profile, "bLockAbilityHistory", { tMove = {0, 210} })
+	G:API_AddCheckBox(self, wndGeneral, "Show ability history", self._DB.profile, "bEnableAbilityHistory", { tMove = {0, 210} })
+	G:API_AddNumberBox(self, wndGeneral, "Number of shortcuts per ability", self._DB.profile, "nHistoryMax", { tOffsets = { 305, 215, 600, 210 } })
+	G:API_AddCheckBox(self, wndGeneral, "Lock ability history", self._DB.profile, "bLockAbilityHistory", { tMove = {0, 240} })
 
-	local wndSkinBox = G:API_AddComboBox(self, wndGeneral, "Menu button skin", self._DB.profile, "strMenuSprite", { tMove = {0, 240}, tWidths = {100, 150}, fnCallback = self.BuildMenuButtons })
+	local wndSkinBox = G:API_AddComboBox(self, wndGeneral, "Menu button skin", self._DB.profile, "strMenuSprite", { tMove = {0, 270}, tWidths = {100, 150}, fnCallback = self.BuildMenuButtons })
 	G:API_AddOptionToComboBox(self, wndSkinBox , "Lights", "Lights", {})
 	G:API_AddOptionToComboBox(self, wndSkinBox , "Arrow", "Arrow", {})
 	G:API_AddOptionToComboBox(self, wndSkinBox , "Glow", "Glow", {})
 
-	G:API_AddButton(self, wndGeneral, "Rescan layout", { tOffsets = {305, 245, 455, 270}, fnCallback = function() self._DB.profile.bIsLayoutScanned = false self:BuildMenuButtons() end })
+	G:API_AddButton(self, wndGeneral, "Rescan layout", { tOffsets = {305, 275, 455, 300}, fnCallback = function() self._DB.profile.bIsLayoutScanned = false self:BuildMenuButtons() end })
 end
 
 -----------------------------------------------------------------------------------------------
