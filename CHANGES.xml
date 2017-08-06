@@ -1,0 +1,8 @@
+<p><strong>Release v1.1:</strong></p>
+	<p>Added:</p>
+	<ul>
+		<li>CombatQueue: Allows to select new Abilities in combat/death for change after leaving combat (or revival).</li>
+		<ul>
+			<li>This has a new Option in ForgeUI's Settings - its enabled by default, but disabled for those who update</li>
+		</ul>
+	</ul>
